@@ -83,6 +83,7 @@ const Index = () => {
     }
 
     const userMessage: Message = { role: "user", content: input };
+    const userInput = input;
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
@@ -91,50 +92,47 @@ const Index = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Step 1: Call WF7 (Parser) - Parse user query into structured intents
-      const parserResponse = await fetch("http://localhost:5678/webhook/mcp/parser", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          query: input,
-          context: {
-            source: "lovable",
-            project_key: "NT"
-          }
-        })
+      // Call AI chat edge function with conversation history
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: {
+          messages: [...messages, userMessage].map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+          userId: user.id,
+          jiraDomain: jiraDomain
+        }
       });
 
-      if (!parserResponse.ok) {
-        throw new Error(`Parser failed: ${parserResponse.statusText}`);
+      if (error) throw error;
+
+      // Handle AI response
+      let assistantContent = "";
+      
+      if (data.message) {
+        assistantContent = data.message;
       }
 
-      const parserData = await parserResponse.json();
-
-      // Step 2: Call WF8 (Router) - Execute workflows based on parsed intents
-      const routerResponse = await fetch("http://localhost:5678/webhook/mcp/router", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parserData)
-      });
-
-      if (!routerResponse.ok) {
-        throw new Error(`Router failed: ${routerResponse.statusText}`);
+      // Add formatted workflow results if available
+      if (data.formattedResult) {
+        assistantContent += data.formattedResult;
       }
 
-      const routerData = await routerResponse.json();
-
-      // Display the summary from the router as the assistant's response
       const assistantMessage: Message = {
         role: "assistant",
-        content: routerData.summary || "Your request was processed successfully.",
+        content: assistantContent || "Your request was processed successfully.",
       };
       
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // Log full response for debugging (can be expanded to UI later)
-      console.log("Full Router Response:", routerData);
+      // Log full response for debugging
+      if (data.workflowResult) {
+        console.log("Full Workflow Response:", data.workflowResult);
+      }
+
     } catch (error: any) {
+      console.error("Chat error:", error);
+      
       toast({
         title: "Error",
         description: error.message || "Failed to process your request",
@@ -144,7 +142,7 @@ const Index = () => {
       // Add error message to chat
       const errorMessage: Message = {
         role: "assistant",
-        content: `Sorry, I encountered an error: ${error.message}. Please ensure n8n workflows are running on localhost:5678.`,
+        content: `Sorry, I encountered an error: ${error.message}. ${error.message.includes('localhost') ? 'Please ensure n8n workflows are running on localhost:5678.' : ''}`,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -192,7 +190,7 @@ const Index = () => {
                   Welcome to Nesora
                 </h2>
                 <p className="text-muted-foreground text-lg">
-                  I'm your AI-powered Jira assistant. Ask me to create, update, or manage your Jira tickets using natural language.
+                  I'm Nesora, your AI-powered Jira assistant. Just chat naturally—I'll ask clarifying questions only when needed and execute your requests instantly.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-left">
                   <div className="bg-muted/30 rounded-lg p-4">

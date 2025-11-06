@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Bot, User } from "lucide-react";
+import MarkdownMessage from "./MarkdownMessage";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -30,7 +31,11 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
             : "bg-card border border-border rounded-tl-none"
         )}
       >
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+        {isUser ? (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+        ) : (
+          <MarkdownMessage content={content} className="text-sm text-foreground" />
+        )}
       </div>
 
       {isUser && (
