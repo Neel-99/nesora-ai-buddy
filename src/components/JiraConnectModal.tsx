@@ -30,14 +30,20 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const jiraBaseUrl = `https://${formData.jiraDomain}.atlassian.net`;
+      // Normalize domain - remove .atlassian.net if user included it
+      let normalizedDomain = formData.jiraDomain.trim();
+      normalizedDomain = normalizedDomain.replace(/\.atlassian\.net\/?$/, "");
+      normalizedDomain = normalizedDomain.replace(/^https?:\/\//, "");
+      normalizedDomain = normalizedDomain.split("/")[0]; // Take only domain part
+
+      const jiraBaseUrl = `https://${normalizedDomain}.atlassian.net`;
 
       // Store in database
       const { error: dbError } = await supabase
         .from("jira_connections")
         .upsert({
           user_id: user.id,
-          jira_domain: formData.jiraDomain,
+          jira_domain: normalizedDomain,
           jira_email: formData.jiraEmail,
           jira_token: formData.jiraToken,
           jira_base_url: jiraBaseUrl,

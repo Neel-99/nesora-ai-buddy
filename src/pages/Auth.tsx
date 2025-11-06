@@ -57,26 +57,51 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-gray-50 to-background p-4">
-      <div className="w-full max-w-md animate-fade-in">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-blue-50 p-4">
+      <div className="w-full max-w-2xl animate-fade-in">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/80 mb-4 shadow-brand">
-            <Sparkles className="w-8 h-8 text-primary-foreground" />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-primary/80 mb-6 shadow-brand">
+            <Sparkles className="w-10 h-10 text-primary-foreground" />
           </div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent mb-2">
-            Nesora
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent mb-3">
+            Your AI-Powered Jira Execution Assistant
           </h1>
-          <p className="text-muted-foreground text-lg">
-            AI-Powered Jira Execution Assistant
+          <p className="text-muted-foreground text-xl font-medium mb-8">
+            Connect Jira. Chat Naturally. Automate Everything.
           </p>
+
+          {/* Benefits Section */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-left">
+            <div className="bg-card/50 backdrop-blur-sm rounded-xl p-6 border border-border shadow-soft">
+              <div className="text-3xl mb-3">🚀</div>
+              <h3 className="font-semibold mb-2">Direct Ticket Management</h3>
+              <p className="text-sm text-muted-foreground">
+                Create and manage Jira tickets directly from chat
+              </p>
+            </div>
+            <div className="bg-card/50 backdrop-blur-sm rounded-xl p-6 border border-border shadow-soft">
+              <div className="text-3xl mb-3">🤖</div>
+              <h3 className="font-semibold mb-2">AI-Powered</h3>
+              <p className="text-sm text-muted-foreground">
+                Understands natural language commands
+              </p>
+            </div>
+            <div className="bg-card/50 backdrop-blur-sm rounded-xl p-6 border border-border shadow-soft">
+              <div className="text-3xl mb-3">🔗</div>
+              <h3 className="font-semibold mb-2">Secure Integration</h3>
+              <p className="text-sm text-muted-foreground">
+                Via Supabase and Atlassian Cloud
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="bg-card rounded-2xl shadow-large p-8 border border-border">
           <div className="space-y-4">
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-semibold mb-2">Welcome Back</h2>
+              <h2 className="text-2xl font-semibold mb-2">Get Started</h2>
               <p className="text-sm text-muted-foreground">
-                Sign in to continue automating your Jira workflows
+                Sign in to start automating your Jira workflows
               </p>
             </div>
 

@@ -88,24 +88,65 @@ const Index = () => {
     setIsLoading(true);
 
     try {
-      // Placeholder for API orchestration
-      // TODO: Implement parser and intent orchestration with n8n
-      
-      // Simulated response for demo
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Step 1: Call WF7 (Parser) - Parse user query into structured intents
+      const parserResponse = await fetch("http://localhost:5678/webhook/mcp/parser", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          query: input,
+          context: {
+            source: "lovable",
+            project_key: "NT"
+          }
+        })
+      });
+
+      if (!parserResponse.ok) {
+        throw new Error(`Parser failed: ${parserResponse.statusText}`);
+      }
+
+      const parserData = await parserResponse.json();
+
+      // Step 2: Call WF8 (Router) - Execute workflows based on parsed intents
+      const routerResponse = await fetch("http://localhost:5678/webhook/mcp/router", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parserData)
+      });
+
+      if (!routerResponse.ok) {
+        throw new Error(`Router failed: ${routerResponse.statusText}`);
+      }
+
+      const routerData = await routerResponse.json();
+
+      // Display the summary from the router as the assistant's response
       const assistantMessage: Message = {
         role: "assistant",
-        content: "I've received your request. The API orchestration with n8n will be implemented to handle your Jira operations.",
+        content: routerData.summary || "Your request was processed successfully.",
       };
       
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Log full response for debugging (can be expanded to UI later)
+      console.log("Full Router Response:", routerData);
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to process your request",
         variant: "destructive",
       });
+
+      // Add error message to chat
+      const errorMessage: Message = {
+        role: "assistant",
+        content: `Sorry, I encountered an error: ${error.message}. Please ensure n8n workflows are running on localhost:5678.`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -133,9 +174,11 @@ const Index = () => {
             <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
               Nesora Assistant
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Ask me to create, fetch, or update Jira tickets...
-            </p>
+            {jiraConnected && jiraDomain && (
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <span className="text-green-500">✓</span> Connected to: {jiraDomain}.atlassian.net
+              </p>
+            )}
           </div>
         </div>
 
@@ -143,16 +186,29 @@ const Index = () => {
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-3 max-w-md">
+              <div className="text-center space-y-4 max-w-lg">
                 <div className="text-6xl mb-4">👋</div>
-                <h2 className="text-2xl font-semibold">Welcome to Nesora</h2>
-                <p className="text-muted-foreground">
+                <h2 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                  Welcome to Nesora
+                </h2>
+                <p className="text-muted-foreground text-lg">
                   I'm your AI-powered Jira assistant. Ask me to create, update, or manage your Jira tickets using natural language.
                 </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-sm text-left">
+                  <div className="bg-muted/30 rounded-lg p-4">
+                    <p className="font-medium mb-1">✨ Natural Language</p>
+                    <p className="text-muted-foreground text-xs">Just type what you need in plain English</p>
+                  </div>
+                  <div className="bg-muted/30 rounded-lg p-4">
+                    <p className="font-medium mb-1">⚡ Instant Actions</p>
+                    <p className="text-muted-foreground text-xs">Create, update, and manage tickets instantly</p>
+                  </div>
+                </div>
                 {!jiraConnected && (
                   <Button
                     onClick={() => setShowJiraModal(true)}
-                    className="mt-4 bg-gradient-to-r from-primary to-primary/90"
+                    className="mt-6 bg-gradient-to-r from-primary to-primary/90 hover:shadow-brand"
+                    size="lg"
                   >
                     Get Started - Connect Jira
                   </Button>
