@@ -18,29 +18,29 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
       )}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-soft">
-          <Bot className="w-5 h-5 text-primary-foreground" />
+        <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-brand">
+          <Bot className="w-6 h-6 text-primary-foreground" />
         </div>
       )}
       
       <div
         className={cn(
-          "max-w-[80%] md:max-w-[70%] rounded-2xl px-4 py-3 shadow-soft",
+          "max-w-[80%] md:max-w-[70%] rounded-2xl px-5 py-4 shadow-soft transition-all",
           isUser
-            ? "bg-primary text-primary-foreground rounded-tr-none"
-            : "bg-card border border-border rounded-tl-none"
+            ? "bg-gradient-primary text-primary-foreground rounded-tr-none"
+            : "bg-card/80 backdrop-blur-sm border border-border/50 rounded-tl-none hover:border-border"
         )}
       >
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">{content}</p>
         ) : (
           <MarkdownMessage content={content} className="text-sm text-foreground" />
         )}
       </div>
 
       {isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center shadow-soft">
-          <User className="w-5 h-5 text-muted-foreground" />
+        <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-muted/50 border border-border flex items-center justify-center shadow-soft">
+          <User className="w-6 h-6 text-muted-foreground" />
         </div>
       )}
     </div>
