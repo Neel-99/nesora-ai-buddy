@@ -236,7 +236,7 @@ When conversing:
 
 // Execute intents in order, handling dependencies
 async function executeIntents(intents: any[], userId: string, jiraDomain: string) {
-  const results: any = {};
+  const context: any = {};
   const executionOrder: any[] = [];
 
   // Build execution order respecting dependencies
@@ -246,7 +246,7 @@ async function executeIntents(intents: any[], userId: string, jiraDomain: string
     let progressMade = false;
     
     for (const intent of intents) {
-      const intentId = intent.intent || intent.id;
+      const intentId = intent.id || intent.intent;
       
       if (executed.has(intentId)) continue;
       
@@ -270,34 +270,70 @@ async function executeIntents(intents: any[], userId: string, jiraDomain: string
 
   // Execute intents in order
   for (const intent of executionOrder) {
+    const intentId = intent.id || intent.intent;
     const intentName = intent.intent;
     const endpoint = N8N_ENDPOINTS[intentName as keyof typeof N8N_ENDPOINTS];
     
     if (!endpoint) {
       console.error(`Unknown intent: ${intentName}`);
-      results[intentName] = { error: `Unknown intent: ${intentName}` };
+      context[intentId] = { error: `Unknown intent: ${intentName}` };
       continue;
     }
 
-    // Build payload with user_id and project_key
-    const payload = {
+    // Start with base payload
+    let payload = {
       user_id: userId,
       project_key: "NT",
       jira_domain: jiraDomain,
       ...intent.payload
     };
 
-    // If depends_on, merge previous results
-    if (intent.depends_on && intent.depends_on.length > 0) {
-      payload.previous_results = {};
-      for (const dep of intent.depends_on) {
-        if (results[dep]) {
-          payload.previous_results[dep] = results[dep];
+    // Handle dynamic build logic if present
+    if (intent.build && intent.depends_on && intent.depends_on.length > 0) {
+      try {
+        // Get source data from context using the 'from' path
+        const fromPath = intent.build.from.replace('$ctx.', '');
+        const pathParts = fromPath.split('.');
+        let sourceData = context;
+        
+        for (const part of pathParts) {
+          if (sourceData && typeof sourceData === 'object') {
+            sourceData = sourceData[part];
+          }
         }
+
+        // Map over source data to build payload arrays
+        if (Array.isArray(sourceData) && intent.build.map) {
+          const mapInstructions = intent.build.map;
+          
+          // Get the target array key (e.g., "updates[]" -> "updates")
+          const targetKey = Object.keys(mapInstructions)[0].replace('[]', '');
+          const mapTemplate = mapInstructions[Object.keys(mapInstructions)[0]];
+          
+          // Build the array by mapping over source data
+          payload[targetKey] = sourceData.map((item: any) => {
+            const mappedItem: any = {};
+            
+            for (const [key, value] of Object.entries(mapTemplate)) {
+              if (typeof value === 'string' && value.startsWith('$it.')) {
+                // Replace $it.key with item.key
+                const itemKey = value.replace('$it.', '');
+                mappedItem[key] = item[itemKey];
+              } else {
+                // Use literal value
+                mappedItem[key] = value;
+              }
+            }
+            
+            return mappedItem;
+          });
+        }
+      } catch (buildError: any) {
+        console.error(`Error building payload for ${intentId}:`, buildError);
       }
     }
 
-    console.log(`Executing intent: ${intentName}`, JSON.stringify(payload, null, 2));
+    console.log(`Executing intent: ${intentName} (${intentId})`, JSON.stringify(payload, null, 2));
 
     try {
       const response = await fetch(endpoint, {
@@ -311,28 +347,32 @@ async function executeIntents(intents: any[], userId: string, jiraDomain: string
       }
 
       const result = await response.json();
-      results[intentName] = result;
-      console.log(`${intentName} result:`, JSON.stringify(result, null, 2));
+      
+      // Store in context using the intent's ID
+      context[intentId] = Array.isArray(result) ? result[0] : result;
+      
+      console.log(`${intentName} (${intentId}) result:`, JSON.stringify(context[intentId], null, 2));
     } catch (error: any) {
-      console.error(`Error executing ${intentName}:`, error);
-      results[intentName] = { error: error.message };
+      console.error(`Error executing ${intentName} (${intentId}):`, error);
+      context[intentId] = { error: error.message };
     }
   }
 
-  return { intents: executionOrder, results };
+  return { intents: executionOrder, context };
 }
 
 // Format workflow results into a readable message
 function formatWorkflowResult(workflowResult: any): string {
-  if (!workflowResult || !workflowResult.results) return "";
+  if (!workflowResult || !workflowResult.context) return "";
 
   let formatted = "\n\n";
-  const { intents, results } = workflowResult;
+  const { intents, context } = workflowResult;
 
   // Process each intent result
   for (const intent of intents) {
+    const intentId = intent.id || intent.intent;
     const intentName = intent.intent;
-    const result = results[intentName];
+    const result = context[intentId];
 
     if (!result || result.error) {
       formatted += `❌ **${intentName}** failed: ${result?.error || "Unknown error"}\n\n`;
