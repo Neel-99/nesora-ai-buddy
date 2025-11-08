@@ -38,7 +38,28 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
 
       const jiraBaseUrl = `https://${normalizedDomain}.atlassian.net`;
 
-      // Store in database
+      // Call WF6 Connect workflow
+      const connectResponse = await fetch("https://independence-actor-novel-beds.trycloudflare.com/webhook/mcp/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          jira_domain: jiraBaseUrl,
+          jira_email: formData.jiraEmail,
+          jira_token: formData.jiraToken,
+        }),
+      });
+
+      if (!connectResponse.ok) {
+        throw new Error("Failed to connect to Jira");
+      }
+
+      const connectResult = await connectResponse.json();
+      if (connectResult[0]?.json?.status === "error") {
+        throw new Error(connectResult[0].json.message || "Connection verification failed");
+      }
+
+      // Store in database after successful connection
       const { error: dbError } = await supabase
         .from("jira_connections")
         .upsert({
