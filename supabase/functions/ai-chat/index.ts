@@ -234,178 +234,272 @@ When conversing:
   }
 });
 
-// Execute intents in order, handling dependencies
+// Execute intents with dependency resolution and parallel execution
 async function executeIntents(intents: any[], userId: string, jiraDomain: string) {
   const context: any = {};
-  const executionOrder: any[] = [];
-
-  // Build execution order respecting dependencies
+  const results: any[] = [];
   const executed = new Set<string>();
   
+  console.log(`\n🚀 Starting execution of ${intents.length} intents`);
+
+  // Execute in waves: parallel for non-dependent, sequential for dependent
   while (executed.size < intents.length) {
-    let progressMade = false;
-    
-    for (const intent of intents) {
+    // Find all intents ready to execute (no unmet dependencies)
+    const readyIntents = intents.filter(intent => {
       const intentId = intent.id || intent.intent;
+      if (executed.has(intentId)) return false;
       
-      if (executed.has(intentId)) continue;
-      
-      // Check if dependencies are met
       const dependencies = intent.depends_on || [];
-      const canExecute = dependencies.every((dep: string) => executed.has(dep));
-      
-      if (canExecute) {
-        executionOrder.push(intent);
-        executed.add(intentId);
-        progressMade = true;
-      }
-    }
-    
-    // Prevent infinite loop if dependencies cannot be resolved
-    if (!progressMade) {
-      console.error("Circular dependency detected or unresolvable dependencies");
+      return dependencies.every((dep: string) => executed.has(dep));
+    });
+
+    if (readyIntents.length === 0) {
+      console.error("⚠️ Circular dependency or unresolvable dependencies detected");
       break;
     }
+
+    // Execute all ready intents in parallel
+    console.log(`\n📦 Executing batch of ${readyIntents.length} ready intents`);
+    await Promise.all(
+      readyIntents.map(intent => executeIntent(intent, context, executed, results, userId, jiraDomain))
+    );
   }
 
-  // Execute intents in order
-  for (const intent of executionOrder) {
-    const intentId = intent.id || intent.intent;
-    const intentName = intent.intent;
-    const endpoint = N8N_ENDPOINTS[intentName as keyof typeof N8N_ENDPOINTS];
-    
-    if (!endpoint) {
-      console.error(`Unknown intent: ${intentName}`);
-      context[intentId] = { error: `Unknown intent: ${intentName}` };
-      continue;
-    }
+  // Calculate overall status
+  const successCount = results.filter(r => r.status === "success").length;
+  const errorCount = results.filter(r => r.status === "error").length;
+  let overallStatus = "success";
+  if (errorCount === results.length) overallStatus = "failed";
+  else if (errorCount > 0) overallStatus = "partial";
 
+  console.log(`\n✅ Execution complete: ${successCount} succeeded, ${errorCount} failed`);
+
+  return {
+    status: overallStatus,
+    intents_executed: executed.size,
+    results,
+    context,
+    meta: { timestamp: new Date().toISOString() }
+  };
+}
+
+// Execute a single intent
+async function executeIntent(
+  intent: any,
+  context: any,
+  executed: Set<string>,
+  results: any[],
+  userId: string,
+  jiraDomain: string
+) {
+  const intentId = intent.id || intent.intent;
+  const intentName = intent.intent;
+  
+  console.log(`\n🎯 Executing: ${intentName} (${intentId})`);
+
+  const endpoint = N8N_ENDPOINTS[intentName as keyof typeof N8N_ENDPOINTS];
+  if (!endpoint) {
+    console.error(`❌ Unknown intent: ${intentName}`);
+    const errorResult = { intent: intentName, id: intentId, status: "error", error: `Unknown intent: ${intentName}` };
+    context[intentId] = errorResult;
+    results.push(errorResult);
+    executed.add(intentId);
+    return;
+  }
+
+  try {
     // Start with base payload
-    let payload = {
+    let payload: any = {
       user_id: userId,
-      project_key: "NT",
+      project_key: intent.payload?.project_key || "NT",
       jira_domain: jiraDomain,
       ...intent.payload
     };
 
-    // Handle dynamic build logic if present
-    if (intent.build && intent.depends_on && intent.depends_on.length > 0) {
-      try {
-        // Get source data from context using the 'from' path
-        const fromPath = intent.build.from.replace('$ctx.', '');
-        const pathParts = fromPath.split('.');
-        let sourceData = context;
-        
-        for (const part of pathParts) {
-          if (sourceData && typeof sourceData === 'object') {
-            sourceData = sourceData[part];
-          }
-        }
-
-        // Map over source data to build payload arrays
-        if (Array.isArray(sourceData) && intent.build.map) {
-          const mapInstructions = intent.build.map;
-          
-          // Get the target array key (e.g., "updates[]" -> "updates")
-          const targetKey = Object.keys(mapInstructions)[0].replace('[]', '');
-          const mapTemplate = mapInstructions[Object.keys(mapInstructions)[0]];
-          
-          // Build the array by mapping over source data
-          payload[targetKey] = sourceData.map((item: any) => {
-            const mappedItem: any = {};
-            
-            for (const [key, value] of Object.entries(mapTemplate)) {
-              if (typeof value === 'string' && value.startsWith('$it.')) {
-                // Replace $it.key with item.key
-                const itemKey = value.replace('$it.', '');
-                mappedItem[key] = item[itemKey];
-              } else {
-                // Use literal value
-                mappedItem[key] = value;
-              }
-            }
-            
-            return mappedItem;
-          });
-        }
-      } catch (buildError: any) {
-        console.error(`Error building payload for ${intentId}:`, buildError);
-      }
+    // Ensure project_id is set if missing
+    if (!payload.project_id && payload.project_key) {
+      payload.project_id = payload.project_key;
     }
 
-    console.log(`Executing intent: ${intentName} (${intentId})`, JSON.stringify(payload, null, 2));
-
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`${intentName} failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      // Store in context using the intent's ID
-      context[intentId] = Array.isArray(result) ? result[0] : result;
-      
-      console.log(`${intentName} (${intentId}) result:`, JSON.stringify(context[intentId], null, 2));
-    } catch (error: any) {
-      console.error(`Error executing ${intentName} (${intentId}):`, error);
-      context[intentId] = { error: error.message };
+    // Handle dynamic build logic
+    if (intent.build) {
+      payload = await buildPayloadFromContext(intent.build, context, payload);
     }
+
+    console.log(`📤 Payload:`, JSON.stringify(payload, null, 2));
+
+    // Execute HTTP request
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const rawResult = await response.json();
+    const result = Array.isArray(rawResult) ? rawResult[0] : rawResult;
+
+    console.log(`✅ Success:`, JSON.stringify(result, null, 2).substring(0, 200));
+
+    // Store result
+    context[intentId] = result;
+    results.push({
+      intent: intentName,
+      id: intentId,
+      status: "success",
+      data: result
+    });
+    executed.add(intentId);
+
+  } catch (error: any) {
+    console.error(`❌ Error in ${intentName}:`, error.message);
+    const errorResult = {
+      intent: intentName,
+      id: intentId,
+      status: "error",
+      error: error.message
+    };
+    context[intentId] = errorResult;
+    results.push(errorResult);
+    executed.add(intentId);
+  }
+}
+
+// Build payload dynamically from context using build instructions
+async function buildPayloadFromContext(build: any, context: any, basePayload: any): Promise<any> {
+  const payload = { ...basePayload };
+
+  if (!build.from || !build.map) {
+    console.warn("⚠️ Build block missing 'from' or 'map'");
+    return payload;
   }
 
-  return { intents: executionOrder, context };
+  try {
+    // Resolve source data from context (e.g., "$ctx.fetch_in_progress_tickets.data.issues")
+    const fromPath = build.from.replace('$ctx.', '');
+    let sourceData = resolveContextPath(context, fromPath);
+
+    if (!Array.isArray(sourceData)) {
+      console.warn(`⚠️ Source data is not an array: ${fromPath}`);
+      return payload;
+    }
+
+    console.log(`🔍 Found ${sourceData.length} items from ${fromPath}`);
+
+    // Apply filter if present
+    if (build.filter) {
+      const originalLength = sourceData.length;
+      sourceData = sourceData.filter((item: any) => {
+        return Object.entries(build.filter).every(([key, value]) => item[key] === value);
+      });
+      console.log(`🔎 Filtered from ${originalLength} to ${sourceData.length} items`);
+    }
+
+    // Map data to target array
+    const mapInstructions = build.map;
+    const targetKey = Object.keys(mapInstructions)[0].replace('[]', ''); // "updates[]" → "updates"
+    const mapTemplate = mapInstructions[Object.keys(mapInstructions)[0]];
+
+    payload[targetKey] = sourceData.map((item: any) => {
+      const mappedItem: any = {};
+      for (const [key, value] of Object.entries(mapTemplate)) {
+        if (typeof value === 'string' && value.startsWith('$it.')) {
+          // Token replacement: $it.key → item.key
+          const itemKey = value.replace('$it.', '');
+          mappedItem[key] = resolveContextPath(item, itemKey);
+        } else {
+          // Literal value
+          mappedItem[key] = value;
+        }
+      }
+      return mappedItem;
+    });
+
+    console.log(`🔨 Built ${targetKey} array with ${payload[targetKey].length} items`);
+
+  } catch (error: any) {
+    console.error(`❌ Error building payload:`, error.message);
+  }
+
+  return payload;
+}
+
+// Resolve nested paths like "fetch_tickets.data.issues" or "key"
+function resolveContextPath(obj: any, path: string): any {
+  const parts = path.split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current && typeof current === 'object' && part in current) {
+      current = current[part];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
 }
 
 // Format workflow results into a readable message
 function formatWorkflowResult(workflowResult: any): string {
-  if (!workflowResult || !workflowResult.context) return "";
+  if (!workflowResult || !workflowResult.results) return "";
 
   let formatted = "\n\n";
-  const { intents, context } = workflowResult;
+  const { results, status, intents_executed } = workflowResult;
 
-  // Process each intent result
-  for (const intent of intents) {
-    const intentId = intent.id || intent.intent;
-    const intentName = intent.intent;
-    const result = context[intentId];
+  // Add overall status header
+  if (status === "success") {
+    formatted += `✅ **All ${intents_executed} operations completed successfully**\n\n`;
+  } else if (status === "partial") {
+    formatted += `⚠️ **${intents_executed} operations completed with some errors**\n\n`;
+  } else if (status === "failed") {
+    formatted += `❌ **Operations failed**\n\n`;
+  }
 
-    if (!result || result.error) {
-      formatted += `❌ **${intentName}** failed: ${result?.error || "Unknown error"}\n\n`;
+  // Process each result
+  for (const result of results) {
+    if (result.status === "error") {
+      formatted += `❌ **${result.intent}** failed: ${result.error}\n\n`;
       continue;
     }
 
+    const data = result.data;
+
     // Format based on intent type
-    switch (intentName) {
+    switch (result.intent) {
       case "create_ticket":
-        if (result.tickets && Array.isArray(result.tickets)) {
+        if (data.tickets && Array.isArray(data.tickets)) {
           formatted += "### ✅ Created Tickets\n\n";
-          result.tickets.forEach((ticket: any) => {
-            formatted += `- **${ticket.key}** - ${ticket.summary}\n`;
+          data.tickets.forEach((ticket: any) => {
+            formatted += `- **\`${ticket.key}\`** — ${ticket.summary}\n`;
           });
           formatted += "\n";
-        } else if (result.success) {
+        } else if (data.created && Array.isArray(data.created)) {
+          formatted += "### ✅ Created Tickets\n\n";
+          data.created.forEach((key: string) => {
+            formatted += `- **\`${key}\`**\n`;
+          });
+          formatted += "\n";
+        } else if (data.success) {
           formatted += "### ✅ Tickets Created Successfully\n\n";
         }
         break;
 
       case "fetch_ticket":
-        if (result.tickets && Array.isArray(result.tickets)) {
-          formatted += "### 📋 Fetched Tickets\n\n";
-          if (result.tickets.length === 0) {
+        const tickets = data.tickets || data.data?.issues || [];
+        if (Array.isArray(tickets)) {
+          formatted += `### 📋 Fetched ${tickets.length} Ticket${tickets.length !== 1 ? 's' : ''}\n\n`;
+          if (tickets.length === 0) {
             formatted += "No tickets found matching your criteria.\n\n";
           } else {
             formatted += "| Key | Summary | Status | Assignee |\n";
             formatted += "|-----|---------|--------|----------|\n";
-            result.tickets.forEach((ticket: any) => {
+            tickets.forEach((ticket: any) => {
               const key = ticket.key || "N/A";
               const summary = (ticket.summary || ticket.fields?.summary || "No summary").substring(0, 50);
               const status = ticket.status || ticket.fields?.status?.name || "Unknown";
-              const assignee = ticket.assignee || ticket.fields?.assignee?.displayName || "Unassigned";
+              const assignee = ticket.assignee || ticket.fields?.assignee?.displayName || ticket.fields?.assignee?.emailAddress || "Unassigned";
               formatted += `| \`${key}\` | ${summary} | ${status} | ${assignee} |\n`;
             });
             formatted += "\n";
@@ -414,46 +508,55 @@ function formatWorkflowResult(workflowResult: any): string {
         break;
 
       case "update_ticket":
-        if (result.updated && Array.isArray(result.updated)) {
-          formatted += "### ✏️ Updated Tickets\n\n";
-          result.updated.forEach((ticket: any) => {
-            formatted += `- **${ticket.key}** updated successfully\n`;
+        if (data.updated && Array.isArray(data.updated)) {
+          formatted += `### ✏️ Updated ${data.updated.length} Ticket${data.updated.length !== 1 ? 's' : ''}\n\n`;
+          data.updated.forEach((ticket: any) => {
+            const key = typeof ticket === 'string' ? ticket : ticket.key;
+            formatted += `- **\`${key}\`** updated successfully\n`;
           });
           formatted += "\n";
-        } else if (result.success) {
+        } else if (data.success) {
           formatted += "### ✏️ Tickets Updated Successfully\n\n";
         }
         break;
 
       case "comment_ticket":
-        if (result.comments && Array.isArray(result.comments)) {
-          formatted += "### 💬 Added Comments\n\n";
-          result.comments.forEach((comment: any) => {
-            formatted += `- Comment added to **${comment.key}**\n`;
+        if (data.comments && Array.isArray(data.comments)) {
+          formatted += `### 💬 Added ${data.comments.length} Comment${data.comments.length !== 1 ? 's' : ''}\n\n`;
+          data.comments.forEach((comment: any) => {
+            const key = typeof comment === 'string' ? comment : comment.key;
+            formatted += `- Comment added to **\`${key}\`**\n`;
           });
           formatted += "\n";
-        } else if (result.success) {
+        } else if (data.commented && Array.isArray(data.commented)) {
+          formatted += `### 💬 Added ${data.commented.length} Comment${data.commented.length !== 1 ? 's' : ''}\n\n`;
+          data.commented.forEach((key: string) => {
+            formatted += `- Comment added to **\`${key}\`**\n`;
+          });
+          formatted += "\n";
+        } else if (data.success) {
           formatted += "### 💬 Comments Added Successfully\n\n";
         }
         break;
 
       case "delete_ticket":
-        if (result.deleted && Array.isArray(result.deleted)) {
-          formatted += "### 🗑️ Deleted Tickets\n\n";
-          result.deleted.forEach((ticket: any) => {
-            formatted += `- **${ticket.key}** deleted\n`;
+        if (data.deleted && Array.isArray(data.deleted)) {
+          formatted += `### 🗑️ Deleted ${data.deleted.length} Ticket${data.deleted.length !== 1 ? 's' : ''}\n\n`;
+          data.deleted.forEach((ticket: any) => {
+            const key = typeof ticket === 'string' ? ticket : ticket.key;
+            formatted += `- **\`${key}\`** deleted\n`;
           });
           formatted += "\n";
-        } else if (result.success) {
+        } else if (data.success) {
           formatted += "### 🗑️ Tickets Deleted Successfully\n\n";
         }
         break;
 
       default:
-        if (result.message) {
-          formatted += `${result.message}\n\n`;
-        } else if (result.success) {
-          formatted += `✅ ${intentName} completed successfully\n\n`;
+        if (data.message) {
+          formatted += `${data.message}\n\n`;
+        } else if (data.success) {
+          formatted += `✅ ${result.intent} completed successfully\n\n`;
         }
     }
   }
