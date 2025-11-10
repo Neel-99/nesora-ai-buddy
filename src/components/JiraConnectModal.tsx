@@ -39,7 +39,7 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       const jiraBaseUrl = `https://${normalizedDomain}.atlassian.net`;
 
       // Call WF6 Connect workflow
-      const connectResponse = await fetch("https://independence-actor-novel-beds.trycloudflare.com/webhook/mcp/connect", {
+      const connectResponse = await fetch("https://registry-walking-runner-bronze.trycloudflare.com/webhook/mcp/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -51,12 +51,18 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       });
 
       if (!connectResponse.ok) {
-        throw new Error("Failed to connect to Jira");
+        const errorText = await connectResponse.text();
+        console.error("Connect response error:", errorText);
+        throw new Error("Failed to connect to Jira. Please verify your credentials.");
       }
 
       const connectResult = await connectResponse.json();
-      if (connectResult[0]?.json?.status === "error") {
-        throw new Error(connectResult[0].json.message || "Connection verification failed");
+      console.log("Connect result:", connectResult);
+      
+      // Handle array response from n8n
+      const result = Array.isArray(connectResult) ? connectResult[0] : connectResult;
+      if (result?.json?.status === "error" || result?.status === "error") {
+        throw new Error(result?.json?.message || result?.message || "Connection verification failed");
       }
 
       // Store in database after successful connection

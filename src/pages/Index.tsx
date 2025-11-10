@@ -84,16 +84,20 @@ const Index = () => {
 
       const { data, error } = await supabase
         .from("jira_connections")
-        .select("jira_domain")
+        .select("jira_domain, verified")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (!error && data) {
+      if (!error && data && data.verified) {
         setJiraConnected(true);
         setJiraDomain(data.jira_domain);
+      } else {
+        setJiraConnected(false);
+        setJiraDomain(undefined);
       }
     } catch (error) {
       console.error("Error checking Jira connection:", error);
+      setJiraConnected(false);
     }
   };
 

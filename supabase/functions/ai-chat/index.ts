@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const N8N_BASE_URL = "https://independence-actor-novel-beds.trycloudflare.com";
+const N8N_BASE_URL = "https://registry-walking-runner-bronze.trycloudflare.com";
 const N8N_ENDPOINTS = {
   parser: `${N8N_BASE_URL}/webhook/mcp/parser`,
   create_ticket: `${N8N_BASE_URL}/webhook/mcp/create`,
