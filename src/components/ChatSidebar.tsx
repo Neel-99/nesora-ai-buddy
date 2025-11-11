@@ -12,13 +12,17 @@ interface ChatSidebarProps {
 }
 
 const ChatSidebar = ({ onConnectJira, jiraConnected, jiraDomain }: ChatSidebarProps) => {
+  console.log("🟢 ChatSidebar rendered", { jiraConnected, jiraDomain });
+  
   const { toast } = useToast();
   const navigate = useNavigate();
   const [userEmail, setUserEmail] = useState<string>("");
 
   useEffect(() => {
+    console.log("🟢 ChatSidebar mounted");
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log("🟢 ChatSidebar got user", user?.email);
       if (user?.email) {
         setUserEmail(user.email);
       }
@@ -116,7 +120,10 @@ const ChatSidebar = ({ onConnectJira, jiraConnected, jiraDomain }: ChatSidebarPr
       {/* Actions */}
       <div className="p-6 space-y-3">
         <Button
-          onClick={onConnectJira}
+          onClick={() => {
+            console.log("🔵 JIRA BUTTON CLICKED");
+            onConnectJira();
+          }}
           className="w-full justify-start bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-soft"
         >
           <Link2 className="mr-2 h-4 w-4" />
@@ -136,7 +143,10 @@ const ChatSidebar = ({ onConnectJira, jiraConnected, jiraDomain }: ChatSidebarPr
       <div className="p-6 border-t border-border space-y-3">
         <Button
           variant="outline"
-          onClick={handleSignOut}
+          onClick={(e) => {
+            console.log("🔵 SIGN OUT CLICKED");
+            handleSignOut(e);
+          }}
           className="w-full justify-start"
         >
           <LogOut className="mr-2 h-4 w-4" />

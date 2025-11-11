@@ -14,6 +14,8 @@ interface JiraConnectModalProps {
 }
 
 const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalProps) => {
+  console.log("🟢 JiraConnectModal rendered", { open });
+  
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
