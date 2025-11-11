@@ -118,9 +118,15 @@ const Index = () => {
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+    console.log("🔵 handleSend called", { input: input.trim(), isLoading, jiraConnected });
+    
+    if (!input.trim() || isLoading) {
+      console.log("⚠️ handleSend blocked: empty input or loading");
+      return;
+    }
 
     if (!jiraConnected) {
+      console.log("⚠️ handleSend blocked: Jira not connected");
       toast({
         title: "Jira not connected",
         description: "Please connect your Jira account first",
@@ -130,26 +136,39 @@ const Index = () => {
     }
 
     const userMessage: Message = { role: "user", content: input };
+    console.log("🔵 Adding user message", userMessage);
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
 
     try {
+      console.log("🔵 Getting user...");
       const { data: { user } } = await supabase.auth.getUser();
+      console.log("🔵 User retrieved", { userId: user?.id });
+      
       if (!user) throw new Error("Not authenticated");
 
+      const payload = {
+        messages: [...messages, userMessage].map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+        userId: user.id,
+        jiraDomain: jiraDomain,
+      };
+      
+      console.log("🔵 Invoking ai-chat edge function with payload:", payload);
+
       const { data, error } = await supabase.functions.invoke("ai-chat", {
-        body: {
-          messages: [...messages, userMessage].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-          userId: user.id,
-          jiraDomain: jiraDomain,
-        },
+        body: payload,
       });
 
-      if (error) throw error;
+      console.log("🔵 Edge function response:", { data, error });
+
+      if (error) {
+        console.error("🔴 Edge function error:", error);
+        throw error;
+      }
 
       let assistantContent = data.message || "";
       if (data.formattedResult) {
@@ -303,7 +322,10 @@ const Index = () => {
                 disabled={isLoading}
               />
               <Button
-                onClick={handleSend}
+                onClick={() => {
+                  console.log("🔵 SEND BUTTON CLICKED");
+                  handleSend();
+                }}
                 disabled={isLoading || !input.trim()}
                 className="bg-gradient-primary hover:shadow-brand text-primary-foreground px-6 h-12 rounded-xl font-medium"
               >
