@@ -42,77 +42,90 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       console.log("Normalized domain:", normalizedDomain);
       console.log("Jira base URL:", jiraBaseUrl);
 
-      // Call WF6 Connect workflow
+      // Call WF6 Connect workflow with timeout
       console.log("Calling WF6 connect endpoint...");
-      const connectResponse = await fetch("https://antibodies-concerning-sega-far.trycloudflare.com/webhook/mcp/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          jira_domain: jiraBaseUrl,
-          jira_email: formData.jiraEmail,
-          jira_token: formData.jiraToken,
-        }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      console.log("Connect response status:", connectResponse.status);
-
-      if (!connectResponse.ok) {
-        const errorText = await connectResponse.text();
-        console.error("Connect response error:", errorText);
-        throw new Error("Failed to connect to Jira. Please verify your credentials and try again.");
-      }
-
-      const connectResult = await connectResponse.json();
-      console.log("Connect result:", connectResult);
-      
-      // Handle array response from n8n
-      const result = Array.isArray(connectResult) ? connectResult[0] : connectResult;
-      console.log("Parsed result:", result);
-
-      if (result?.json?.status === "error" || result?.status === "error") {
-        const errorMsg = result?.json?.message || result?.message || "Connection verification failed";
-        console.error("Connection error from n8n:", errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      console.log("WF6 connection successful, storing in database...");
-
-      // Store in database after successful connection
-      const { error: dbError } = await supabase
-        .from("jira_connections")
-        .upsert({
-          user_id: user.id,
-          jira_domain: normalizedDomain,
-          jira_email: formData.jiraEmail,
-          jira_token: formData.jiraToken,
-          jira_base_url: jiraBaseUrl,
-          verified: true,
-        }, {
-          onConflict: 'user_id'
+      try {
+        const connectResponse = await fetch("https://antibodies-concerning-sega-far.trycloudflare.com/webhook/mcp/connect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: user.id,
+            jira_domain: jiraBaseUrl,
+            jira_email: formData.jiraEmail,
+            jira_token: formData.jiraToken,
+          }),
+          signal: controller.signal,
         });
 
-      if (dbError) {
-        console.error("Database error:", dbError);
-        throw dbError;
+        clearTimeout(timeoutId);
+        console.log("Connect response status:", connectResponse.status);
+
+        if (!connectResponse.ok) {
+          const errorText = await connectResponse.text();
+          console.error("Connect response error:", errorText);
+          throw new Error("Failed to connect to Jira. Please verify your credentials and try again.");
+        }
+
+        const connectResult = await connectResponse.json();
+        console.log("Connect result:", connectResult);
+        
+        // Handle array response from n8n
+        const result = Array.isArray(connectResult) ? connectResult[0] : connectResult;
+        console.log("Parsed result:", result);
+
+        if (result?.json?.status === "error" || result?.status === "error") {
+          const errorMsg = result?.json?.message || result?.message || "Connection verification failed";
+          console.error("Connection error from n8n:", errorMsg);
+          throw new Error(errorMsg);
+        }
+
+        console.log("WF6 connection successful, storing in database...");
+
+        // Store in database after successful connection
+        const { error: dbError } = await supabase
+          .from("jira_connections")
+          .upsert({
+            user_id: user.id,
+            jira_domain: normalizedDomain,
+            jira_email: formData.jiraEmail,
+            jira_token: formData.jiraToken,
+            jira_base_url: jiraBaseUrl,
+            verified: true,
+          }, {
+            onConflict: 'user_id'
+          });
+
+        if (dbError) {
+          console.error("Database error:", dbError);
+          throw dbError;
+        }
+
+        console.log("Jira connection stored successfully");
+
+        toast({
+          title: "Success",
+          description: `Connected to ${normalizedDomain}.atlassian.net`,
+        });
+
+        onConnected();
+        onOpenChange(false);
+        
+        // Reset form
+        setFormData({
+          jiraDomain: "",
+          jiraEmail: "",
+          jiraToken: "",
+        });
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error("Connection timeout. Please check your network and try again.");
+        }
+        throw fetchError;
       }
-
-      console.log("Jira connection stored successfully");
-
-      toast({
-        title: "Success",
-        description: `Connected to ${normalizedDomain}.atlassian.net`,
-      });
-
-      onConnected();
-      onOpenChange(false);
-      
-      // Reset form
-      setFormData({
-        jiraDomain: "",
-        jiraEmail: "",
-        jiraToken: "",
-      });
     } catch (error: any) {
       console.error("Jira connection error:", error);
       toast({

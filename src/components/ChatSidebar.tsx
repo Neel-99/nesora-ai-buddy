@@ -27,27 +27,27 @@ const ChatSidebar = ({ onConnectJira, jiraConnected, jiraDomain }: ChatSidebarPr
   const handleSignOut = async () => {
     try {
       console.log("Signing out...");
-      const { error } = await supabase.auth.signOut();
       
-      if (error) {
-        throw error;
-      }
-
-      console.log("Sign out successful");
+      // Clear local storage and sign out
+      await supabase.auth.signOut({ scope: 'local' });
+      
+      console.log("Sign out successful, redirecting...");
       toast({
         title: "Signed out",
         description: "You have been signed out successfully",
       });
       
-      // Force navigation and reload
-      navigate("/auth");
-      setTimeout(() => window.location.reload(), 100);
+      // Navigate to auth page - the auth state listener will handle the rest
+      navigate("/auth", { replace: true });
     } catch (error: any) {
       console.error("Sign out error:", error);
+      // Force sign out even on error
+      localStorage.clear();
+      navigate("/auth", { replace: true });
+      
       toast({
-        title: "Error",
-        description: error.message || "Failed to sign out",
-        variant: "destructive",
+        title: "Signed out",
+        description: "You have been signed out",
       });
     }
   };
