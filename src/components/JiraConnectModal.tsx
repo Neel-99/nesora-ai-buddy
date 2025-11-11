@@ -44,7 +44,7 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
 
       // Call WF6 Connect workflow
       console.log("Calling WF6 connect endpoint...");
-      const connectResponse = await fetch("https://registry-walking-runner-bronze.trycloudflare.com/webhook/mcp/connect", {
+      const connectResponse = await fetch("https://antibodies-concerning-sega-far.trycloudflare.com/webhook/mcp/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
