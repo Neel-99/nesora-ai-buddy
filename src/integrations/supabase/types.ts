@@ -17,6 +17,7 @@ export type Database = {
       jira_connections: {
         Row: {
           created_at: string | null
+          id: string
           issue_types: Json | null
           jira_base_url: string
           jira_domain: string
@@ -28,6 +29,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          id?: string
           issue_types?: Json | null
           jira_base_url: string
           jira_domain: string
@@ -39,6 +41,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          id?: string
           issue_types?: Json | null
           jira_base_url?: string
           jira_domain?: string
