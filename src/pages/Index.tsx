@@ -80,7 +80,13 @@ const Index = () => {
   const checkJiraConnection = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setJiraConnected(false);
+        setJiraDomain(undefined);
+        return;
+      }
+
+      console.log("Checking Jira connection for user:", user.id);
 
       const { data, error } = await supabase
         .from("jira_connections")
@@ -88,16 +94,28 @@ const Index = () => {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (!error && data && data.verified) {
+      console.log("Jira connection query result:", { data, error });
+
+      if (error) {
+        console.error("Jira connection query error:", error);
+        setJiraConnected(false);
+        setJiraDomain(undefined);
+        return;
+      }
+
+      if (data && data.verified) {
+        console.log("Jira connected:", data.jira_domain);
         setJiraConnected(true);
         setJiraDomain(data.jira_domain);
       } else {
+        console.log("No verified Jira connection found");
         setJiraConnected(false);
         setJiraDomain(undefined);
       }
     } catch (error) {
       console.error("Error checking Jira connection:", error);
       setJiraConnected(false);
+      setJiraDomain(undefined);
     }
   };
 

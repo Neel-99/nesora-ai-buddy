@@ -30,6 +30,8 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      console.log("Connecting Jira for user:", user.id);
+
       // Normalize domain - remove .atlassian.net if user included it
       let normalizedDomain = formData.jiraDomain.trim();
       normalizedDomain = normalizedDomain.replace(/\.atlassian\.net\/?$/, "");
@@ -37,8 +39,11 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       normalizedDomain = normalizedDomain.split("/")[0]; // Take only domain part
 
       const jiraBaseUrl = `https://${normalizedDomain}.atlassian.net`;
+      console.log("Normalized domain:", normalizedDomain);
+      console.log("Jira base URL:", jiraBaseUrl);
 
       // Call WF6 Connect workflow
+      console.log("Calling WF6 connect endpoint...");
       const connectResponse = await fetch("https://registry-walking-runner-bronze.trycloudflare.com/webhook/mcp/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,10 +55,12 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
         }),
       });
 
+      console.log("Connect response status:", connectResponse.status);
+
       if (!connectResponse.ok) {
         const errorText = await connectResponse.text();
         console.error("Connect response error:", errorText);
-        throw new Error("Failed to connect to Jira. Please verify your credentials.");
+        throw new Error("Failed to connect to Jira. Please verify your credentials and try again.");
       }
 
       const connectResult = await connectResponse.json();
@@ -61,9 +68,15 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       
       // Handle array response from n8n
       const result = Array.isArray(connectResult) ? connectResult[0] : connectResult;
+      console.log("Parsed result:", result);
+
       if (result?.json?.status === "error" || result?.status === "error") {
-        throw new Error(result?.json?.message || result?.message || "Connection verification failed");
+        const errorMsg = result?.json?.message || result?.message || "Connection verification failed";
+        console.error("Connection error from n8n:", errorMsg);
+        throw new Error(errorMsg);
       }
+
+      console.log("WF6 connection successful, storing in database...");
 
       // Store in database after successful connection
       const { error: dbError } = await supabase
@@ -75,13 +88,20 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
           jira_token: formData.jiraToken,
           jira_base_url: jiraBaseUrl,
           verified: true,
+        }, {
+          onConflict: 'user_id'
         });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error("Database error:", dbError);
+        throw dbError;
+      }
+
+      console.log("Jira connection stored successfully");
 
       toast({
         title: "Success",
-        description: "Jira connected successfully",
+        description: `Connected to ${normalizedDomain}.atlassian.net`,
       });
 
       onConnected();
@@ -94,9 +114,10 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
         jiraToken: "",
       });
     } catch (error: any) {
+      console.error("Jira connection error:", error);
       toast({
         title: "Connection Failed",
-        description: error.message,
+        description: error.message || "An unexpected error occurred",
         variant: "destructive",
       });
     } finally {
