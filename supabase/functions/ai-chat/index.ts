@@ -164,15 +164,24 @@ When conversing:
     // If AI wants to execute an action, call the n8n workflows
     if (parsedResponse.action && !parsedResponse.needsClarification) {
       try {
+        // Ensure context includes project_key
+        const context = {
+          source: "lovable",
+          project_key: "NT",
+          ...parsedResponse.action.context
+        };
+
         // Call WF7 (Parser)
         console.log("Calling parser with query:", parsedResponse.action.query);
+        console.log("Parser context:", JSON.stringify(context, null, 2));
+        
         const parserResponse = await fetch(N8N_ENDPOINTS.parser, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id: userId,
             query: parsedResponse.action.query,
-            context: parsedResponse.action.context
+            context: context
           })
         });
 
@@ -180,8 +189,20 @@ When conversing:
           throw new Error(`Parser workflow failed: ${parserResponse.statusText}`);
         }
 
-        const parserData = await parserResponse.json();
-        console.log("Parser result:", JSON.stringify(parserData, null, 2));
+        const parserRawData = await parserResponse.json();
+        console.log("Parser raw response:", JSON.stringify(parserRawData, null, 2));
+
+        // Handle array response from parser
+        const parserData = Array.isArray(parserRawData) ? parserRawData[0] : parserRawData;
+
+        // Check parser status
+        if (parserData.status === "error") {
+          return new Response(JSON.stringify({
+            message: parsedResponse.message + "\n\n⚠️ " + (parserData.message || "Failed to parse your request. Please try rephrasing.")
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
 
         // Check if parser returned intents
         if (!parserData.intents || parserData.intents.length === 0) {
@@ -192,10 +213,10 @@ When conversing:
           });
         }
 
-        // Execute intents sequentially, respecting dependencies
-        console.log("Executing intents from parser");
+        // Execute intents with dependency resolution
+        console.log(`Executing ${parserData.intents.length} intents from parser`);
         const workflowResult = await executeIntents(parserData.intents, userId, jiraDomain);
-        console.log("Workflow result:", JSON.stringify(workflowResult, null, 2));
+        console.log("Workflow execution complete:", JSON.stringify(workflowResult, null, 2));
 
         // Format the workflow result nicely
         return new Response(JSON.stringify({
@@ -209,7 +230,7 @@ When conversing:
       } catch (workflowError: any) {
         console.error("Workflow execution error:", workflowError);
         return new Response(JSON.stringify({
-          message: `Sorry, something went wrong while processing your Jira workflows: ${workflowError.message}`,
+          message: `⚠️ Sorry, something went wrong: ${workflowError.message}`,
           error: workflowError.message
         }), {
           status: 500,
