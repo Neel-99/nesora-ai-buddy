@@ -30,17 +30,49 @@ const ChatSidebar = ({ onConnectJira, jiraConnected, jiraDomain }: ChatSidebarPr
     e.preventDefault();
     e.stopPropagation();
     
+    console.log("🔵 Sign Out: Button clicked");
+    
     try {
-      await supabase.auth.signOut();
+      console.log("🔵 Sign Out: Calling supabase.auth.signOut()");
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error("🔴 Sign Out: Error from Supabase", error);
+        throw error;
+      }
+      
+      console.log("✅ Sign Out: Successfully signed out");
+      
+      // Clear any local state
+      localStorage.clear();
+      
       toast({
         title: "Signed out successfully",
       });
+      
+      // Force navigation to auth page
+      console.log("🔵 Sign Out: Navigating to /auth");
+      navigate("/auth", { replace: true });
+      
+      // Force reload after a short delay to ensure clean state
+      setTimeout(() => {
+        console.log("🔵 Sign Out: Reloading page");
+        window.location.href = "/auth";
+      }, 100);
+      
     } catch (error) {
-      console.error("Sign out error:", error);
+      console.error("🔴 Sign Out: Caught error", error);
+      
+      // Even if there's an error, try to clear local state and redirect
+      localStorage.clear();
+      
       toast({
         title: "Signed out",
+        description: "You have been signed out",
         variant: "default",
       });
+      
+      window.location.href = "/auth";
     }
   };
 

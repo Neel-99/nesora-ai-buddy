@@ -24,13 +24,20 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("🔵 Jira Connect: Form submitted");
     
-    if (loading) return;
+    if (loading) {
+      console.log("🔵 Jira Connect: Already loading, ignoring submit");
+      return;
+    }
     
     setLoading(true);
+    console.log("🔵 Jira Connect: Starting connection process");
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log("🔵 Jira Connect: Got user", user?.id);
+      
       if (!user) {
         throw new Error("Not authenticated");
       }
@@ -42,33 +49,42 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       normalizedDomain = normalizedDomain.split("/")[0];
 
       const jiraBaseUrl = `https://${normalizedDomain}.atlassian.net`;
+      console.log("🔵 Jira Connect: Normalized domain", { normalizedDomain, jiraBaseUrl });
 
-      // Call WF6 with timeout
+      // Call webhook with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => {
+        console.log("🔴 Jira Connect: Request timed out after 30s");
+        controller.abort();
+      }, 30000);
 
-      const connectResponse = await fetch(
-        "https://antibodies-concerning-sega-far.trycloudflare.com/webhook/mcp/connect",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: user.id,
-            jira_domain: jiraBaseUrl,
-            jira_email: formData.jiraEmail,
-            jira_token: formData.jiraToken,
-          }),
-          signal: controller.signal,
-        }
-      );
+      const webhookUrl = "https://antibodies-concerning-sega-far.trycloudflare.com/webhook/mcp/connect";
+      console.log("🔵 Jira Connect: Calling webhook", webhookUrl);
+
+      const connectResponse = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          jira_domain: jiraBaseUrl,
+          jira_email: formData.jiraEmail,
+          jira_token: formData.jiraToken,
+        }),
+        signal: controller.signal,
+      });
 
       clearTimeout(timeoutId);
+      console.log("🔵 Jira Connect: Got response", connectResponse.status);
 
       if (!connectResponse.ok) {
-        throw new Error(`Connection failed (${connectResponse.status})`);
+        const errorText = await connectResponse.text();
+        console.log("🔴 Jira Connect: Error response", errorText);
+        throw new Error(`Connection failed (${connectResponse.status}): ${errorText}`);
       }
 
       const rawResult = await connectResponse.json();
+      console.log("🔵 Jira Connect: Raw result", rawResult);
+      
       const result = Array.isArray(rawResult) ? rawResult[0] : rawResult;
 
       if (result?.status === "error" || result?.json?.status === "error") {
@@ -76,6 +92,7 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
       }
 
       // Store in database
+      console.log("🔵 Jira Connect: Storing in database");
       const { error: dbError } = await supabase
         .from("jira_connections")
         .upsert(
@@ -90,8 +107,12 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
           { onConflict: "user_id" }
         );
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.log("🔴 Jira Connect: Database error", dbError);
+        throw dbError;
+      }
 
+      console.log("✅ Jira Connect: Success!");
       toast({
         title: "Connected successfully",
         description: `Connected to ${normalizedDomain}.atlassian.net`,
@@ -106,12 +127,12 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
         jiraToken: "",
       });
     } catch (error: any) {
-      console.error("Connection error:", error);
+      console.error("🔴 Jira Connect: Error", error);
       
       let errorMessage = "Failed to connect to Jira";
       
       if (error.name === "AbortError") {
-        errorMessage = "Connection timeout - please try again";
+        errorMessage = "Connection timeout - the Jira webhook is not responding. Please check if the service is running.";
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -122,6 +143,7 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
         variant: "destructive",
       });
     } finally {
+      console.log("🔵 Jira Connect: Cleanup, setting loading to false");
       setLoading(false);
     }
   };
