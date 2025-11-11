@@ -24,45 +24,34 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (loading) return;
+    
     setLoading(true);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      if (!user) {
+        throw new Error("Not authenticated");
+      }
 
-      console.log("Connecting Jira for user:", user.id);
-
-      // Normalize domain - remove .atlassian.net if user included it
+      // Normalize domain
       let normalizedDomain = formData.jiraDomain.trim();
       normalizedDomain = normalizedDomain.replace(/\.atlassian\.net\/?$/, "");
       normalizedDomain = normalizedDomain.replace(/^https?:\/\//, "");
-      normalizedDomain = normalizedDomain.split("/")[0]; // Take only domain part
+      normalizedDomain = normalizedDomain.split("/")[0];
 
       const jiraBaseUrl = `https://${normalizedDomain}.atlassian.net`;
-      console.log("Normalized domain:", normalizedDomain);
-      console.log("Jira base URL:", jiraBaseUrl);
 
-      // Call WF6 Connect workflow with timeout
-      console.log("Calling WF6 connect endpoint...");
-      console.log("Request payload:", {
-        user_id: user.id,
-        jira_domain: jiraBaseUrl,
-        jira_email: formData.jiraEmail
-      });
-
+      // Call WF6 with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.error("Connection timeout after 30 seconds");
-        controller.abort();
-      }, 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      try {
-        const connectResponse = await fetch("https://antibodies-concerning-sega-far.trycloudflare.com/webhook/mcp/connect", {
+      const connectResponse = await fetch(
+        "https://antibodies-concerning-sega-far.trycloudflare.com/webhook/mcp/connect",
+        {
           method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id: user.id,
             jira_domain: jiraBaseUrl,
@@ -70,90 +59,66 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
             jira_token: formData.jiraToken,
           }),
           signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        console.log("Connect response received - Status:", connectResponse.status);
-        console.log("Response headers:", Object.fromEntries(connectResponse.headers.entries()));
-
-        if (!connectResponse.ok) {
-          const errorText = await connectResponse.text();
-          console.error("Connect response error body:", errorText);
-          throw new Error(`Failed to connect to Jira (${connectResponse.status}). Please verify your credentials.`);
         }
+      );
 
-        const responseText = await connectResponse.text();
-        console.log("Raw response:", responseText);
+      clearTimeout(timeoutId);
 
-        let connectResult;
-        try {
-          connectResult = JSON.parse(responseText);
-        } catch (parseError) {
-          console.error("Failed to parse response:", parseError);
-          throw new Error("Invalid response from server. Please try again.");
-        }
+      if (!connectResponse.ok) {
+        throw new Error(`Connection failed (${connectResponse.status})`);
+      }
 
-        console.log("Parsed connect result:", connectResult);
-        
-        // Handle array response from n8n
-        const result = Array.isArray(connectResult) ? connectResult[0] : connectResult;
-        console.log("Parsed result:", result);
+      const rawResult = await connectResponse.json();
+      const result = Array.isArray(rawResult) ? rawResult[0] : rawResult;
 
-        if (result?.json?.status === "error" || result?.status === "error") {
-          const errorMsg = result?.json?.message || result?.message || "Connection verification failed";
-          console.error("Connection error from n8n:", errorMsg);
-          throw new Error(errorMsg);
-        }
+      if (result?.status === "error" || result?.json?.status === "error") {
+        throw new Error(result?.message || result?.json?.message || "Connection failed");
+      }
 
-        console.log("WF6 connection successful, storing in database...");
-
-        // Store in database after successful connection
-        const { error: dbError } = await supabase
-          .from("jira_connections")
-          .upsert({
+      // Store in database
+      const { error: dbError } = await supabase
+        .from("jira_connections")
+        .upsert(
+          {
             user_id: user.id,
             jira_domain: normalizedDomain,
             jira_email: formData.jiraEmail,
             jira_token: formData.jiraToken,
             jira_base_url: jiraBaseUrl,
             verified: true,
-          }, {
-            onConflict: 'user_id'
-          });
+          },
+          { onConflict: "user_id" }
+        );
 
-        if (dbError) {
-          console.error("Database error:", dbError);
-          throw dbError;
-        }
+      if (dbError) throw dbError;
 
-        console.log("Jira connection stored successfully");
-
-        toast({
-          title: "Success",
-          description: `Connected to ${normalizedDomain}.atlassian.net`,
-        });
-
-        onConnected();
-        onOpenChange(false);
-        
-        // Reset form
-        setFormData({
-          jiraDomain: "",
-          jiraEmail: "",
-          jiraToken: "",
-        });
-      } catch (fetchError: any) {
-        clearTimeout(timeoutId);
-        if (fetchError.name === 'AbortError') {
-          throw new Error("Connection timeout. Please check your network and try again.");
-        }
-        throw fetchError;
-      }
-    } catch (error: any) {
-      console.error("Jira connection error:", error);
       toast({
-        title: "Connection Failed",
-        description: error.message || "An unexpected error occurred",
+        title: "Connected successfully",
+        description: `Connected to ${normalizedDomain}.atlassian.net`,
+      });
+
+      onConnected();
+      onOpenChange(false);
+
+      setFormData({
+        jiraDomain: "",
+        jiraEmail: "",
+        jiraToken: "",
+      });
+    } catch (error: any) {
+      console.error("Connection error:", error);
+      
+      let errorMessage = "Failed to connect to Jira";
+      
+      if (error.name === "AbortError") {
+        errorMessage = "Connection timeout - please try again";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      toast({
+        title: "Connection failed",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

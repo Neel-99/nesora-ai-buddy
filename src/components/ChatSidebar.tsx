@@ -15,56 +15,32 @@ const ChatSidebar = ({ onConnectJira, jiraConnected, jiraDomain }: ChatSidebarPr
   const { toast } = useToast();
   const navigate = useNavigate();
   const [userEmail, setUserEmail] = useState<string>("");
-  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
       if (user?.email) {
         setUserEmail(user.email);
       }
-    });
+    };
+    fetchUser();
   }, []);
 
-  const handleSignOut = async () => {
-    if (isSigningOut) return; // Prevent multiple clicks
-    
-    setIsSigningOut(true);
+  const handleSignOut = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     
     try {
-      console.log("Starting sign out...");
-      
-      const { error } = await supabase.auth.signOut();
-      
-      if (error) {
-        console.error("Sign out error:", error);
-        throw error;
-      }
-      
-      console.log("Sign out successful");
-      
-      // Clear any local state
-      localStorage.removeItem('supabase.auth.token');
-      
+      await supabase.auth.signOut();
+      toast({
+        title: "Signed out successfully",
+      });
+    } catch (error) {
+      console.error("Sign out error:", error);
       toast({
         title: "Signed out",
-        description: "You have been signed out successfully",
+        variant: "default",
       });
-      
-      // Navigate will be handled by auth state change listener
-      navigate("/auth", { replace: true });
-      
-    } catch (error: any) {
-      console.error("Sign out failed:", error);
-      
-      // Force cleanup on error
-      localStorage.clear();
-      
-      toast({
-        title: "Signed out",
-        description: "Session cleared",
-      });
-      
-      navigate("/auth", { replace: true });
     }
   };
 
@@ -129,11 +105,10 @@ const ChatSidebar = ({ onConnectJira, jiraConnected, jiraDomain }: ChatSidebarPr
         <Button
           variant="outline"
           onClick={handleSignOut}
-          disabled={isSigningOut}
           className="w-full justify-start"
         >
           <LogOut className="mr-2 h-4 w-4" />
-          {isSigningOut ? "Signing out..." : "Sign Out"}
+          Sign Out
         </Button>
         
         <p className="text-xs text-center text-muted-foreground">

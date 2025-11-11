@@ -26,32 +26,34 @@ const Index = () => {
   const [showJiraModal, setShowJiraModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Auth effect
   useEffect(() => {
     let mounted = true;
 
-    // Check authentication and create/update profile
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return;
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       
+      if (!mounted) return;
+
       if (!session) {
         navigate("/auth", { replace: true });
-      } else {
-        await createOrUpdateProfile(session.user);
-        // Only check Jira after auth is confirmed
-        checkJiraConnection();
+        return;
       }
-    });
+
+      await createOrUpdateProfile(session.user);
+      checkJiraConnection();
+    };
+
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
-      
-      console.log("Auth state changed:", event, session ? "has session" : "no session");
-      
-      if (event === 'SIGNED_OUT') {
+
+      if (event === "SIGNED_OUT" || !session) {
         setJiraConnected(false);
         setJiraDomain(undefined);
         navigate("/auth", { replace: true });
-      } else if (event === 'SIGNED_IN' && session) {
+      } else if (event === "SIGNED_IN") {
         await createOrUpdateProfile(session.user);
         checkJiraConnection();
       }
@@ -63,42 +65,37 @@ const Index = () => {
     };
   }, [navigate]);
 
+  // Scroll effect
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const createOrUpdateProfile = async (user: any) => {
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .upsert({
+      await supabase.from("profiles").upsert(
+        {
           user_id: user.id,
           email: user.email,
           full_name: user.user_metadata?.full_name || user.user_metadata?.name,
           avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture,
           updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id'
-        });
-
-      if (error) {
-        console.error("Error creating/updating profile:", error);
-      }
+        },
+        { onConflict: "user_id" }
+      );
     } catch (error) {
-      console.error("Profile upsert error:", error);
+      console.error("Profile error:", error);
     }
   };
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   const checkJiraConnection = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      
       if (!user) {
         setJiraConnected(false);
         setJiraDomain(undefined);
         return;
       }
-
-      console.log("Checking Jira connection for user:", user.id);
 
       const { data, error } = await supabase
         .from("jira_connections")
@@ -106,26 +103,15 @@ const Index = () => {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      console.log("Jira connection query result:", { data, error });
-
-      if (error) {
-        console.error("Jira connection query error:", error);
+      if (error || !data || !data.verified) {
         setJiraConnected(false);
         setJiraDomain(undefined);
-        return;
-      }
-
-      if (data && data.verified) {
-        console.log("Jira connected:", data.jira_domain);
+      } else {
         setJiraConnected(true);
         setJiraDomain(data.jira_domain);
-      } else {
-        console.log("No verified Jira connection found");
-        setJiraConnected(false);
-        setJiraDomain(undefined);
       }
     } catch (error) {
-      console.error("Error checking Jira connection:", error);
+      console.error("Jira check error:", error);
       setJiraConnected(false);
       setJiraDomain(undefined);
     }
@@ -136,7 +122,7 @@ const Index = () => {
 
     if (!jiraConnected) {
       toast({
-        title: "Jira Not Connected",
+        title: "Jira not connected",
         description: "Please connect your Jira account first",
         variant: "destructive",
       });
@@ -144,7 +130,6 @@ const Index = () => {
     }
 
     const userMessage: Message = { role: "user", content: input };
-    const userInput = input;
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
@@ -153,59 +138,51 @@ const Index = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Call AI chat edge function with conversation history
-      const { data, error } = await supabase.functions.invoke('ai-chat', {
+      const { data, error } = await supabase.functions.invoke("ai-chat", {
         body: {
-          messages: [...messages, userMessage].map(m => ({
+          messages: [...messages, userMessage].map((m) => ({
             role: m.role,
-            content: m.content
+            content: m.content,
           })),
           userId: user.id,
-          jiraDomain: jiraDomain
-        }
+          jiraDomain: jiraDomain,
+        },
       });
 
       if (error) throw error;
 
-      // Handle AI response
-      let assistantContent = "";
-      
-      if (data.message) {
-        assistantContent = data.message;
-      }
-
-      // Add formatted workflow results if available
+      let assistantContent = data.message || "";
       if (data.formattedResult) {
         assistantContent += data.formattedResult;
       }
 
-      const assistantMessage: Message = {
-        role: "assistant",
-        content: assistantContent || "Your request was processed successfully.",
-      };
-      
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: assistantContent || "Request processed successfully.",
+        },
+      ]);
 
-      // Log full response for debugging
       if (data.workflowResult) {
-        console.log("Full Workflow Response:", data.workflowResult);
+        console.log("Workflow result:", data.workflowResult);
       }
-
     } catch (error: any) {
       console.error("Chat error:", error);
-      
+
       toast({
         title: "Error",
-        description: error.message || "Failed to process your request",
+        description: error.message || "Failed to process request",
         variant: "destructive",
       });
 
-      // Add error message to chat
-      const errorMessage: Message = {
-        role: "assistant",
-        content: `Sorry, I encountered an error: ${error.message}. ${error.message.includes('localhost') ? 'Please ensure n8n workflows are running on localhost:5678.' : ''}`,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Sorry, I encountered an error: ${error.message}`,
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
