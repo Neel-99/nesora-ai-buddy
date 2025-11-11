@@ -27,28 +27,40 @@ const Index = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let mounted = true;
+
     // Check authentication and create/update profile
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
+      
       if (!session) {
-        navigate("/auth");
+        navigate("/auth", { replace: true });
       } else {
-        // Create or update user profile
         await createOrUpdateProfile(session.user);
+        // Only check Jira after auth is confirmed
+        checkJiraConnection();
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!session) {
-        navigate("/auth");
-      } else if (event === 'SIGNED_IN') {
+      if (!mounted) return;
+      
+      console.log("Auth state changed:", event, session ? "has session" : "no session");
+      
+      if (event === 'SIGNED_OUT') {
+        setJiraConnected(false);
+        setJiraDomain(undefined);
+        navigate("/auth", { replace: true });
+      } else if (event === 'SIGNED_IN' && session) {
         await createOrUpdateProfile(session.user);
+        checkJiraConnection();
       }
     });
 
-    // Check Jira connection
-    checkJiraConnection();
-
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   const createOrUpdateProfile = async (user: any) => {

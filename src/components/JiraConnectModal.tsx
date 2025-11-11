@@ -44,13 +44,25 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
 
       // Call WF6 Connect workflow with timeout
       console.log("Calling WF6 connect endpoint...");
+      console.log("Request payload:", {
+        user_id: user.id,
+        jira_domain: jiraBaseUrl,
+        jira_email: formData.jiraEmail
+      });
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => {
+        console.error("Connection timeout after 30 seconds");
+        controller.abort();
+      }, 30000);
 
       try {
         const connectResponse = await fetch("https://antibodies-concerning-sega-far.trycloudflare.com/webhook/mcp/connect", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
           body: JSON.stringify({
             user_id: user.id,
             jira_domain: jiraBaseUrl,
@@ -61,16 +73,27 @@ const JiraConnectModal = ({ open, onOpenChange, onConnected }: JiraConnectModalP
         });
 
         clearTimeout(timeoutId);
-        console.log("Connect response status:", connectResponse.status);
+        console.log("Connect response received - Status:", connectResponse.status);
+        console.log("Response headers:", Object.fromEntries(connectResponse.headers.entries()));
 
         if (!connectResponse.ok) {
           const errorText = await connectResponse.text();
-          console.error("Connect response error:", errorText);
-          throw new Error("Failed to connect to Jira. Please verify your credentials and try again.");
+          console.error("Connect response error body:", errorText);
+          throw new Error(`Failed to connect to Jira (${connectResponse.status}). Please verify your credentials.`);
         }
 
-        const connectResult = await connectResponse.json();
-        console.log("Connect result:", connectResult);
+        const responseText = await connectResponse.text();
+        console.log("Raw response:", responseText);
+
+        let connectResult;
+        try {
+          connectResult = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error("Failed to parse response:", parseError);
+          throw new Error("Invalid response from server. Please try again.");
+        }
+
+        console.log("Parsed connect result:", connectResult);
         
         // Handle array response from n8n
         const result = Array.isArray(connectResult) ? connectResult[0] : connectResult;
