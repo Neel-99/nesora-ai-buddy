@@ -31,8 +31,10 @@ const Index = () => {
     let mounted = true;
 
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!mounted) return;
 
       if (!session) {
@@ -46,7 +48,9 @@ const Index = () => {
 
     initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
       if (event === "SIGNED_OUT" || !session) {
@@ -80,7 +84,7 @@ const Index = () => {
           avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "user_id" }
+        { onConflict: "user_id" },
       );
     } catch (error) {
       console.error("Profile error:", error);
@@ -89,8 +93,10 @@ const Index = () => {
 
   const checkJiraConnection = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       if (!user) {
         setJiraConnected(false);
         setJiraDomain(undefined);
@@ -119,7 +125,7 @@ const Index = () => {
 
   const handleSend = async () => {
     console.log("🔵 handleSend called", { input: input.trim(), isLoading, jiraConnected });
-    
+
     if (!input.trim() || isLoading) {
       console.log("⚠️ handleSend blocked: empty input or loading");
       return;
@@ -143,9 +149,11 @@ const Index = () => {
 
     try {
       console.log("🔵 Getting user...");
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       console.log("🔵 User retrieved", { userId: user?.id });
-      
+
       if (!user) throw new Error("Not authenticated");
 
       const payload = {
@@ -156,7 +164,7 @@ const Index = () => {
         userId: user.id,
         jiraDomain: jiraDomain,
       };
-      
+
       console.log("🔵 Invoking ai-chat edge function with payload:", payload);
 
       const { data, error } = await supabase.functions.invoke("ai-chat", {
@@ -216,11 +224,7 @@ const Index = () => {
 
   return (
     <div className="flex h-screen bg-background">
-      <ChatSidebar
-        onConnectJira={() => setShowJiraModal(true)}
-        jiraConnected={jiraConnected}
-        jiraDomain={jiraDomain}
-      />
+      <ChatSidebar onConnectJira={() => setShowJiraModal(true)} jiraConnected={jiraConnected} jiraDomain={jiraDomain} />
 
       <div className="flex-1 flex flex-col">
         {/* Header */}
@@ -255,21 +259,34 @@ const Index = () => {
             <div className="flex items-center justify-center h-full">
               <div className="text-center space-y-6 max-w-2xl px-4">
                 <div className="inline-block p-4 bg-gradient-primary rounded-3xl shadow-brand mb-2">
-                  <svg className="w-16 h-16 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  <svg
+                    className="w-16 h-16 text-primary-foreground"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                    />
                   </svg>
                 </div>
                 <h2 className="text-4xl font-bold bg-gradient-primary bg-clip-text text-transparent">
                   Welcome to Nesora
                 </h2>
                 <p className="text-muted-foreground text-lg leading-relaxed">
-                  Your intelligent AI-powered Jira assistant. Just chat naturally—I understand context, learn from our conversation, and execute your requests instantly.
+                  Your intelligent AI-powered Jira assistant. Just chat naturally—I understand context, learn from our
+                  conversation, and execute your requests instantly.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
                   <div className="bg-card border border-border rounded-2xl p-6 hover:shadow-soft transition-all">
                     <div className="text-3xl mb-3">🎯</div>
                     <p className="font-semibold mb-2 text-foreground">Smart Execution</p>
-                    <p className="text-muted-foreground text-sm">I clarify only when truly ambiguous—otherwise, I act immediately</p>
+                    <p className="text-muted-foreground text-sm">
+                      I clarify only when truly ambiguous—otherwise, I act immediately
+                    </p>
                   </div>
                   <div className="bg-card border border-border rounded-2xl p-6 hover:shadow-soft transition-all">
                     <div className="text-3xl mb-3">⚡</div>
@@ -279,12 +296,16 @@ const Index = () => {
                   <div className="bg-card border border-border rounded-2xl p-6 hover:shadow-soft transition-all">
                     <div className="text-3xl mb-3">📊</div>
                     <p className="font-semibold mb-2 text-foreground">Beautiful Results</p>
-                    <p className="text-muted-foreground text-sm">Rich formatting with tables, lists, and clear summaries</p>
+                    <p className="text-muted-foreground text-sm">
+                      Rich formatting with tables, lists, and clear summaries
+                    </p>
                   </div>
                   <div className="bg-card border border-border rounded-2xl p-6 hover:shadow-soft transition-all">
                     <div className="text-3xl mb-3">🔄</div>
                     <p className="font-semibold mb-2 text-foreground">Context Aware</p>
-                    <p className="text-muted-foreground text-sm">I remember our conversation and learn your preferences</p>
+                    <p className="text-muted-foreground text-sm">
+                      I remember our conversation and learn your preferences
+                    </p>
                   </div>
                 </div>
                 {!jiraConnected && (
@@ -305,7 +326,7 @@ const Index = () => {
           ))}
 
           {isLoading && <TypingIndicator />}
-          
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -336,11 +357,7 @@ const Index = () => {
         </div>
       </div>
 
-      <JiraConnectModal
-        open={showJiraModal}
-        onOpenChange={setShowJiraModal}
-        onConnected={checkJiraConnection}
-      />
+      <JiraConnectModal open={showJiraModal} onOpenChange={setShowJiraModal} onConnected={checkJiraConnection} />
     </div>
   );
 };
