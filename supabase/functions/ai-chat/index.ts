@@ -403,13 +403,30 @@ async function executeOne(
       body: JSON.stringify(payload),
     });
 
+    // Get response text first to handle empty/malformed responses
+    const responseText = await res.text();
+    console.log(`📥 Raw response text for ${name} (${res.status}):`, responseText.slice(0, 500));
+
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status}: ${res.statusText} - ${errText}`);
+      throw new Error(`HTTP ${res.status}: ${res.statusText} - ${responseText}`);
     }
 
-    const raw = await res.json();
-    console.log(`📥 Raw response for ${name}:`, JSON.stringify(raw).slice(0, 300));
+    // Handle empty response from n8n
+    if (!responseText || responseText.trim() === "") {
+      console.warn(`⚠️ Empty response from n8n for ${name}`);
+      throw new Error(`n8n returned empty response. Workflow may not be configured correctly.`);
+    }
+
+    // Parse JSON safely
+    let raw;
+    try {
+      raw = JSON.parse(responseText);
+    } catch (parseErr) {
+      console.error(`❌ JSON parse error for ${name}:`, parseErr, "Text:", responseText.slice(0, 200));
+      throw new Error(`Invalid JSON from n8n: ${responseText.slice(0, 100)}`);
+    }
+    
+    console.log(`📥 Parsed response for ${name}:`, JSON.stringify(raw).slice(0, 300));
     
     // CRITICAL: Unwrap n8n response format
     const out = unwrapN8nResponse(raw);
