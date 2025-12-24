@@ -215,8 +215,8 @@ const Index = () => {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey && !isLoading && input.trim()) {
       e.preventDefault();
       handleSend();
     }
@@ -337,7 +337,7 @@ const Index = () => {
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 placeholder="Ask me to create, fetch, or update Jira tickets..."
                 className="flex-1 h-12 px-4 bg-background/50 border-border/50 focus:border-primary rounded-xl"
                 disabled={isLoading}
