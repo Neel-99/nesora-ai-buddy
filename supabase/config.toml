@@ -1,1 +1,7 @@
 project_id = "nmwajaadclgmtmaownfy"
+
+[functions.ai-chat]
+verify_jwt = false
+
+[functions.jira-connect]
+verify_jwt = false
